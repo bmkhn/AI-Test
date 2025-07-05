@@ -2,8 +2,9 @@ FOR TESTING
 - Faker
 
 FOR AI TEAM GENERATOR
-- Pandas
-- Sentence Transformers
+- Pandas [not included in final code]
+- Sentence Transformers (all-MiniLM-L6-v2)
 
 FOR ANALYTICS AI SUMMARY
-- HuggingFaceHub [hf_xet]
+- Sentence Transformers (all-MiniLM-L6-v2)
+- DateParser

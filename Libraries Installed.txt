@@ -1,0 +1,9 @@
+FOR TESTING
+- Faker
+
+FOR AI TEAM GENERATOR
+- Pandas
+- Sentence Transformers
+
+FOR ANALYTICS AI SUMMARY
+- HuggingFaceHub [hf_xet]

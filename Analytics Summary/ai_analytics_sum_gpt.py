@@ -1,10 +1,27 @@
 from sentence_transformers import SentenceTransformer, util
 import dateparser
 import sqlite3
+from transformers import AutoTokenizer, AutoModelForCausalLM
+import torch
 
-# --- Configuration ---
-model = SentenceTransformer('all-MiniLM-L6-v2')
+tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neo-1.3B")
+model_gpt2 = AutoModelForCausalLM.from_pretrained("EleutherAI/gpt-neo-1.3B")
+model_gpt2.eval()
+
+tokenizer.pad_token = tokenizer.eos_token  # still required
+
+
+# -- Configuration ---
+model = SentenceTransformer('all-MiniLM-L6-v2') # another option all-mpnet-base-v2
 DB_PATH = "mini_ai_sumgen.db"
+
+
+# --- GPT-Neo Configuration ---
+model_gpt2 = AutoModelForCausalLM.from_pretrained("EleutherAI/gpt-neo-1.3B")
+model_gpt2.eval()
+
+tokenizer.pad_token = tokenizer.eos_token  # still required
+
 
 # --- Constants ---
 TYPES = ["Extension", "Research"]
@@ -224,6 +241,66 @@ def get_sdg_distribution(cursor, year, month=None, college=None):
     cursor.execute(query, params)
     return dict(cursor.fetchall())
 
+
+# --- NLG Summary Generation ---
+def generate_nlg_summary(data_dict, user_query):
+    if not data_dict:
+        return "No data available to summarize."
+    if "error" in data_dict:
+        return f"⚠️ Error: {data_dict['error']}"
+
+    # 1. Structure the raw data
+    structured_lines = []
+    for k, v in data_dict.items():
+        if "|" in k:
+            parts = [p.strip() for p in k.split("|")]
+            if len(parts) == 2:
+                structured_lines.append(f"{parts[0]} had {v} {parts[1].lower()} project(s).")
+            elif len(parts) == 3:
+                structured_lines.append(f"{parts[0]} had {v} {parts[2].lower()} {parts[1].lower()} project(s).")
+        else:
+            structured_lines.append(f"{k} had {v} participant(s).")
+
+    # 2. Use the actual user query as context
+    prompt = (
+        f'User asked: "{user_query}"\n\n'
+        "Here are the related data points:\n"
+        + "\n".join(f"- {line}" for line in structured_lines)
+        + "\n\nWrite a short, informative summary that answers the user’s query:"
+    )
+
+    # 3. Tokenize with pad token
+    inputs = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=512)
+    input_ids = inputs["input_ids"]
+    attention_mask = inputs["attention_mask"]
+
+    # 4. Generate with GPT-Neo
+    with torch.no_grad():
+        outputs = model_gpt2.generate(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            max_length=256,
+            num_return_sequences=1,
+            temperature=0.7,
+            top_k=50,
+            top_p=0.95,
+            no_repeat_ngram_size=2,
+            do_sample=True,
+            pad_token_id=tokenizer.eos_token_id
+        )
+
+    decoded = tokenizer.decode(outputs[0], skip_special_tokens=True).strip()
+
+    # 5. Trim out echo if it starts with prompt
+    if decoded.startswith(prompt.strip()):
+        decoded = decoded[len(prompt.strip()):].strip()
+
+    if not decoded or len(decoded.split()) < 5:
+        return "⚠️ No readable summary generated."
+
+    return decoded
+
+
 # --- Entry Point ---
 def ai_summary(field_of_focus: str, timeline_type: str, value: str):
     func = detect_function(field_of_focus)
@@ -231,7 +308,11 @@ def ai_summary(field_of_focus: str, timeline_type: str, value: str):
     if not year:
         return "\u26a0\ufe0f Invalid timeline input."
     results = dispatch(func, year, month, field_of_focus)
-    return summarize_output(results, f"{field_of_focus} in {value}")
+    readable = summarize_output(results, f"{field_of_focus} in {value}")
+    generated = generate_nlg_summary(results, field_of_focus)
+    return f"{readable}\n\n📝 Generated Summary:\n{generated}"
+
+
 
 # --- Sample Usage ---
 if __name__ == "__main__":

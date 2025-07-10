@@ -8,3 +8,12 @@ FOR AI TEAM GENERATOR
 FOR ANALYTICS AI SUMMARY
 - Sentence Transformers (all-MiniLM-L6-v2)
 - DateParser
+
+
+
+pip install sentence-transformers
+pip install dateparser
+pip install transformers
+pip install pandas
+pip install numpy
+pip install Faker
